@@ -1,0 +1,64 @@
+{
+  "name": "redux-enhanced-slice",
+  "version": "1.0.0",
+  "description": "A utility function for creating enhanced Redux slices with standardized cases and selectors.",
+  "main": "dist/index.umd.js",
+  "module": "dist/index.es.js",
+  "files": [
+    "dist"
+  ],
+  "source": "src/index.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.es.js",
+      "require": "./dist/index.umd.js"
+    }
+  },
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite build --watch",
+    "lint": "eslint . --ext .js,.ts,.tsx",
+    "prepublishOnly": "yarn build",
+    "preversion": "git checkout main && git pull && npm install && npm test && npm run build",
+    "release:major": "npm version major",
+    "release:minor": "npm version minor",
+    "release:patch": "npm version patch",
+    "postversion": "git push origin && git push origin --tags && npm publish --access public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/adenekan41/redux-enhanced-slice.git"
+  },
+  "keywords": [
+    "redux",
+    "redux-toolkit",
+    "create-slice",
+    "enhanced",
+    "slice"
+  ],
+  "author": "Adenekan Wonderful <hellocodewonders@example.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/adenekan41/redux-enhanced-slice/issues"
+  },
+  "homepage": "https://github.com/adenekan41/redux-enhanced-slice#readme",
+  "dependencies": {
+    "@reduxjs/toolkit": "^1.7.1",
+    "lodash": "^4.17.21"
+  },
+  "peerDependencies": {
+    "react": "^17.0.0",
+    "react-redux": "^7.2.6",
+    "redux": "^4.1.2"
+  },
+  "devDependencies": {
+    "@types/lodash": "^4.14.177",
+    "@types/node": "^18.16.3",
+    "@types/react": "^17.0.37",
+    "@types/react-redux": "^7.1.20",
+    "@types/redux": "^3.6.31",
+    "typescript": "^4.5.5",
+    "vite": "^4.2.1",
+    "vite-plugin-dts": "^2.2.0"
+  }
+}
