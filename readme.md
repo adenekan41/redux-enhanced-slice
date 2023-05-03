@@ -1,7 +1,12 @@
 
 # 🌜 Redux Enhanced Slice 🌛
 
-`redux-enhanced-slice` is an NPM package that simplifies the creation of Redux slices by providing standardized cases for handling asynchronous actions and generating selectors for accessing the slice state. 🎉
+
+[![npm](https://badge.fury.io/js/redux-enhanced-slice.svg)](https://www.npmjs.com/package/redux-enhanced-slice)
+
+[![NPM](https://nodei.co/npm/redux-enhanced-slice.png?downloads=true&downloadRank=true&stars=true)](https://nodei.co/npm/redux-enhanced-slice/)
+
+`redux-enhanced-slice-enhanced-slice` is an NPM package that simplifies the creation of Redux slices by providing standardized cases for handling asynchronous actions and generating selectors for accessing the slice state. 🎉
 
 
 ## Features ✨
