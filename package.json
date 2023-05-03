@@ -19,11 +19,11 @@
     "dev": "vite build --watch",
     "lint": "eslint . --ext .js,.ts,.tsx",
     "prepublishOnly": "yarn build",
-    "preversion": "git checkout main && git pull origin main && npm install && npm run build",
+    "preversion": "git checkout main && git pull origin main && yarn install && npm run build",
     "release:major": "npm version major",
     "release:minor": "npm version minor",
     "release:patch": "npm version patch",
-    "postversion": "git push origin && git push origin --tags && npm publish --access public"
+    "postversion": " git push --set-upstream origin main && git push origin --tags && npm publish --access public"
   },
   "repository": {
     "type": "git",
