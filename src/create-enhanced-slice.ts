@@ -1,4 +1,11 @@
-import { createSlice, isAnyOf } from '@reduxjs/toolkit';
+import {
+  PayloadAction,
+  SliceCaseReducers,
+  ValidateSliceCaseReducers,
+  createSlice,
+  isAnyOf,
+} from '@reduxjs/toolkit';
+import { sliceSelectorString, sliceString } from './utils';
 
 import type { ActionReducerMapBuilder } from '@reduxjs/toolkit';
 import type {
@@ -7,10 +14,13 @@ import type {
   ObjectKeys,
   SliceSelector,
   InitialStateSlice,
-  ReturnType,
+  SliceConsolidateReducers,
+  RootState,
+  NoInfer,
+  IgnoreDefaultReducers,
+  ApiEndpointQuery,
 } from './types';
 
-import { sliceSelectorString, sliceString } from './utils';
 /**
  * Retrieves the key of an enum object based on its value.
  * @param {T} enumObject - Enum object of type `T` containing key-value pairs.
@@ -46,7 +56,7 @@ const createEnumObject = <
   });
 
   const processKeys = (accumulator: Record<string, unknown>, key: string) => {
-    const modifiedKey = modifiedKeys.find((record) => record[key])[key];
+    const modifiedKey = modifiedKeys.find((record) => record[key])?.[key];
     accumulator[key] = modifiedKey;
     accumulator[modifiedKey] = key;
     return accumulator;
@@ -67,21 +77,30 @@ const createEnumObject = <
  * with each key in the `state` object. The value of each property is an object with the following
  * properties: `results`, `isLoading`, `hasMore`, `page`, and `errors`.
  */
-const createInitialStateSlice = <T, S extends string>(
+const createInitialStateSlice = <
+  T extends Z extends true ? any : unknown,
+  S extends string,
+  Z extends boolean
+>(
   state: T,
-  name: S
-): InitialStateSlice<T, S> => {
+  name: S,
+  ignoreDefaultReducers?: Z
+): InitialStateSlice<T, S, Z> => {
   const createSliceState = (
     accumulator: Record<string, unknown>,
     key: string
   ) => {
-    accumulator[sliceString(name, key)] = {
-      results: state[key],
-      isLoading: false,
-      hasMore: true,
-      page: 0,
-      errors: null,
-    };
+    if (ignoreDefaultReducers) {
+      accumulator[key] = state[key];
+    } else {
+      accumulator[sliceString(name, key)] = {
+        results: state[key],
+        isLoading: false,
+        hasMore: true,
+        page: 0,
+        errors: null,
+      };
+    }
 
     return accumulator;
   };
@@ -99,7 +118,7 @@ const createInitialStateSlice = <T, S extends string>(
  * selector functions for each key in the `queryTypes` object.
  *
  * @example
- * const { slice, queryTypes, selectors } = createEnhancedSlice('users', {
+ * const { slice, queryTypes, selectors } = sliceCreator('users', {
  *  users: [],
  *  user: null,
  * }, {
@@ -112,35 +131,77 @@ const createInitialStateSlice = <T, S extends string>(
  * const { selectUsersUsers, selectUsersUser } = selectors;
  * const { users, user } = queryTypes;
  */
-export const createEnhancedSlice = <S extends string, T extends unknown>(
+export const sliceCreator = <
+  S extends string,
+  T extends Z['ignoreDefaultReducers'] extends true ? any : unknown,
+  Y extends {
+    reducers?: ValidateSliceCaseReducers<
+      InitialStateSlice<T, S, Z>,
+      SliceCaseReducers<InitialStateSlice<T, S, Z>>
+    >;
+    extraReducers?: (
+      builder: ActionReducerMapBuilder<
+        NoInfer<InitialStateSlice<T, S, Z & never>>
+      >
+    ) => void;
+    cases?: {
+      pending?: ApiEndpointQuery<any, any>[];
+      fulfilled?: ApiEndpointQuery<any, any>[];
+      rejected?: ApiEndpointQuery<any, any>[];
+      all?: ApiEndpointQuery<any, any>[];
+    };
+  },
+  Z extends {
+    debug?: boolean;
+    HYDRATE?: string;
+    ignoreDefaultReducers?: boolean;
+  }
+>(
   name: S,
   initialState: T,
-  {
-    reducers = {},
-    extraReducers = (builder: ActionReducerMapBuilder<any>) => {},
-    cases: { pending = [], fulfilled = [], rejected = [] } = {},
-  },
-  options?: { debug?: boolean; HYDRATE?: string }
+  sliceOptions: Y,
+  options?: Z
 ) => {
-  const createDebuggingMessage = (
-    message,
-    type: 'log' | 'error' | 'warn' = 'log'
-  ) => {
-    if (options?.debug) {
-      console[type](
-        `🌜 [createEnhancedSlice]: ${message[0]} 🌛`,
-        ...message.slice(1)
-      );
-    }
-  };
-
   const debugMessages = {
     INVALID_KEY: `Invalid key provided. The key must be one of the following:`,
     SLICE_CREATED: `created slices for ${name}:`,
     SELECTOR_CREATED: `composed selectors for ${name}:`,
+    IGNORED_DEFAULT_REDUCERS: `You are trying to access internal method setPageData while ignoreDefaultReducers is true`,
+    IGNORED_DEFAULT_REDUCERS_WARN: `When ignoreDefaultReducers is true, you must provide your own reducers to be updated`,
   };
 
-  const getInitialStateSlice = createInitialStateSlice(initialState, name);
+  const {
+    reducers = {},
+    extraReducers,
+    cases: { pending = [], fulfilled = [], rejected = [], all = [] } = {},
+  } = sliceOptions;
+
+  const { debug, ignoreDefaultReducers, HYDRATE } = options || {};
+
+  const getInitialStateSlice = createInitialStateSlice(
+    initialState,
+    name,
+    ignoreDefaultReducers
+  );
+  type QueryKey = typeof getInitialStateSlice & string;
+
+  type ActionBuilder = ActionReducerMapBuilder<
+    NoInfer<InitialStateSlice<T, S, Z & never>>
+  >;
+  type ComposeSelectorsReturnType = {
+    [K in ObjectKeys<typeof queryTypeEnums> as SliceSelector<K, S>]: (
+      state: ReturnType<any>
+    ) => IgnoreDefaultReducers<SliceState<T[K]>, T[K], Z>;
+  };
+
+  const createDebuggingMessage = (
+    message,
+    type: 'log' | 'error' | 'warn' = 'log'
+  ) => {
+    if (debug) {
+      console[type](`🌜 [sliceCreator]: ${message[0]} 🌛`, ...message.slice(1));
+    }
+  };
 
   const queryTypeEnums = createEnumObject(
     getInitialStateSlice,
@@ -148,15 +209,32 @@ export const createEnhancedSlice = <S extends string, T extends unknown>(
     name
   );
 
+  if (ignoreDefaultReducers)
+    createDebuggingMessage([debugMessages.IGNORED_DEFAULT_REDUCERS], 'warn');
   createDebuggingMessage([debugMessages.SLICE_CREATED, getInitialStateSlice]);
 
-  type QueryKey = typeof getInitialStateSlice & string;
+  /**
+   * This function concatenates results from a paginated API request to
+   * the current state if the page number is greater than 1 and the data object contains an array of results.
+   * If the data object is null or undefined, the original state is returned.
+   * @param {Object} state  - The current state of the slice.
+   * @param {Object} data - The data object returned from the API request.
+   */
+  const bundleCase = (state: SliceState<T>, data) => {
+    const cannnotConcat = data?.page === 1;
+    const isArray = Array.isArray(data?.results);
+    const canConcatForPagingToken =
+      typeof state.page === 'string' && data.page === state.page;
 
-  type ActionBuilder = ActionReducerMapBuilder<InitialStateSlice<T, S>>;
-  type ComposeSelectorsReturnType = {
-    [K in ObjectKeys<typeof queryTypeEnums> as SliceSelector<K, S>]: (
-      s: any
-    ) => SliceState<T[K]>;
+    state.results =
+      cannnotConcat || !isArray
+        ? data?.results
+        : [
+            ...(state.results as T[]),
+            ...(canConcatForPagingToken ? [] : (data.results as T[])),
+          ];
+
+    state.hasMore = isArray ? (data?.results as T[]).length > 0 : false;
   };
 
   const composeSelectors = (): ComposeSelectorsReturnType => {
@@ -164,9 +242,9 @@ export const createEnhancedSlice = <S extends string, T extends unknown>(
       accumulator: Record<string, unknown>,
       key: string
     ) => {
-      const selectorName = sliceSelectorString(name, key);
+      const selectorName = sliceSelectorString(key, name);
 
-      accumulator[selectorName] = (state: ReturnType<any>) => {
+      accumulator[selectorName] = (state: RootState) => {
         return state[name][getKeyFromEnumValue(queryTypeEnums, key)];
       };
 
@@ -237,14 +315,7 @@ export const createEnhancedSlice = <S extends string, T extends unknown>(
 
         if (key && getKeyFromEnumValue(queryTypeEnums, key)) {
           if (action.payload.results || action.payload.results.length) {
-            const canConcat =
-              action?.payload?.page > 1 && Array.isArray(newState.results);
-            newState.results = canConcat
-              ? [...newState.results, ...(action?.payload?.results as T[])]
-              : action?.payload?.results;
-            newState.hasMore = canConcat
-              ? (action?.payload?.results as T[]).length > 0
-              : false;
+            bundleCase(newState, action.payload);
 
             if (action?.payload?.page) newState.page = action?.payload?.page;
           }
@@ -262,66 +333,71 @@ export const createEnhancedSlice = <S extends string, T extends unknown>(
 
   const slice = createSlice({
     name,
-    initialState: {
-      ...createInitialStateSlice(initialState, name),
-    },
+    initialState: createInitialStateSlice(initialState, name),
     reducers: {
       ...reducers,
+      /**
+       * @private
+       * @param {Object} state - The current state of the slice.
+       * @param {Object} action - The action dispatched to the reducer.
+       */
       setPageData(
         state,
-        action: {
-          payload: {
-            _queryType: keyof QueryKey;
-            data: SliceState<T>;
-          };
-        }
+        action: PayloadAction<{
+          _queryType: keyof typeof getInitialStateSlice;
+          data: SliceState<T>;
+        }>
       ) {
-        const { _queryType: type, data } = action.payload;
-        const newState = state[type as QueryKey];
-        const canConcat = data?.page > 1 && Array.isArray(newState.results);
-        newState.results = canConcat
-          ? [...newState.results, ...(data?.results as T[])]
-          : data?.results;
+        if (ignoreDefaultReducers) {
+          createDebuggingMessage(
+            [debugMessages.IGNORED_DEFAULT_REDUCERS],
+            'warn'
+          );
+          return;
+        } else {
+          const { _queryType: type, data } = action.payload;
+          const newState = state[type as QueryKey];
 
-        newState.hasMore = canConcat
-          ? (data?.results as T[]).length > 0
-          : false;
-        newState.isLoading = data.isLoading;
+          bundleCase(newState, data);
 
-        if (data.errors) newState.errors = data.errors;
-        if (data.page) newState.page = data.page;
+          newState.isLoading = data.isLoading;
+
+          if (data.errors) newState.errors = data.errors;
+          if (data.page) newState.page = data.page;
+        }
       },
     },
     extraReducers: (builder) => {
-      if (options?.HYDRATE) {
-        builder.addCase(
-          options?.HYDRATE,
-          (state: ReturnType<any>, action: any) => {
-            return {
-              ...state,
-              ...action.payload[name],
-            };
-          }
-        );
+      builder.addCase(HYDRATE, (state: ReturnType<any>, action: any) => {
+        return {
+          ...state,
+          ...action.payload[name],
+        };
+      });
+
+      extraReducers && extraReducers(builder);
+
+      if (!ignoreDefaultReducers) {
+        if (!!all) {
+          constructPendingCases(builder, all);
+          constructSuccessCases(builder, all);
+          constructFailedCases(builder, all);
+        } else {
+          !!pending.length && constructPendingCases(builder, pending);
+          !!fulfilled.length && constructSuccessCases(builder, fulfilled);
+          !!rejected.length && constructFailedCases(builder, rejected);
+        }
       }
-
-      extraReducers(builder);
-
-      !!pending.length && constructPendingCases(builder, pending);
-      !!rejected.length && constructFailedCases(builder, rejected);
-      !!fulfilled.length && constructSuccessCases(builder, fulfilled);
     },
   });
 
   return {
     ...slice,
-    queryTypes: {
-      ...queryTypeEnums,
+    queryTypes: queryTypeEnums,
+    actions: {
+      ...(slice.actions as unknown as typeof slice.actions &
+        SliceConsolidateReducers<Y['reducers'], S>),
     },
-    selectors: {
-      ...composeSelectors(),
-    },
+    selectors: composeSelectors(),
   };
 };
-
-export default createEnhancedSlice;
