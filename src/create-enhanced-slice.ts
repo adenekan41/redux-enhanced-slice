@@ -5,7 +5,7 @@ import {
   createSlice,
   isAnyOf,
 } from '@reduxjs/toolkit';
-import { sliceSelectorString, sliceString } from './utils';
+import { getUnique, isUnique, sliceSelectorString, sliceString } from './utils';
 
 import type { ActionReducerMapBuilder } from '@reduxjs/toolkit';
 import type {
@@ -42,11 +42,7 @@ const getKeyFromEnumValue = <T extends object>(
  * @returns An object of type `SliceEnum<K, S>` that maps keys of type `K` to their corresponding
  * modified keys of type `S`.
  */
-const createEnumObject = <
-  T extends unknown,
-  K extends unknown,
-  S extends string
->(
+const createEnumObject = <T, K, S extends string>(
   obj: T,
   initialKey: K,
   name: S
@@ -90,8 +86,11 @@ const createInitialStateSlice = <
     accumulator: Record<string, unknown>,
     key: string
   ) => {
-    if (ignoreDefaultReducers) {
-      accumulator[key] = state[key];
+    if (
+      ignoreDefaultReducers ||
+      ['number', 'string', 'boolean'].includes(typeof state[key])
+    ) {
+      accumulator[sliceString(name, key)] = state[key];
     } else {
       accumulator[sliceString(name, key)] = {
         results: state[key],
@@ -155,15 +154,16 @@ export const sliceCreator = <
     debug?: boolean;
     HYDRATE?: string;
     ignoreDefaultReducers?: boolean;
+    shouldUseHydrate?: boolean;
   }
 >(
   name: S,
   initialState: T,
-  sliceOptions: Y,
+  sliceOptions?: Y,
   options?: Z
 ) => {
   const debugMessages = {
-    INVALID_KEY: `Invalid key provided. The key must be one of the following:`,
+    INVALID_KEY: `Invalid key or no key provided. The key must be one of the following:`,
     SLICE_CREATED: `created slices for ${name}:`,
     SELECTOR_CREATED: `composed selectors for ${name}:`,
     IGNORED_DEFAULT_REDUCERS: `You are trying to access internal method setPageData while ignoreDefaultReducers is true`,
@@ -176,7 +176,12 @@ export const sliceCreator = <
     cases: { pending = [], fulfilled = [], rejected = [], all = [] } = {},
   } = sliceOptions;
 
-  const { debug, ignoreDefaultReducers, HYDRATE } = options || {};
+  const {
+    debug,
+    ignoreDefaultReducers,
+    shouldUseHydrate = true,
+    HYDRATE = 'HYDRATE',
+  } = options || {};
 
   const getInitialStateSlice = createInitialStateSlice(
     initialState,
@@ -221,7 +226,7 @@ export const sliceCreator = <
    * @param {Object} data - The data object returned from the API request.
    */
   const bundleCase = (state: SliceState<T>, data) => {
-    const cannnotConcat = data?.page === 1;
+    const cannnotConcat = data?.page === 1 || !data.page;
     const isArray = Array.isArray(data?.results);
     const canConcatForPagingToken =
       typeof state.page === 'string' && data.page === state.page;
@@ -234,7 +239,7 @@ export const sliceCreator = <
             ...(canConcatForPagingToken ? [] : (data.results as T[])),
           ];
 
-    state.hasMore = isArray ? (data?.results as T[]).length > 0 : false;
+    state.hasMore = isArray ? (data?.results as T[]).length > 0 : true;
   };
 
   const composeSelectors = (): ComposeSelectorsReturnType => {
@@ -242,7 +247,7 @@ export const sliceCreator = <
       accumulator: Record<string, unknown>,
       key: string
     ) => {
-      const selectorName = sliceSelectorString(key, name);
+      const selectorName = sliceSelectorString(name, key);
 
       accumulator[selectorName] = (state: RootState) => {
         return state[name][getKeyFromEnumValue(queryTypeEnums, key)];
@@ -294,8 +299,8 @@ export const sliceCreator = <
         const key = action.meta.arg.originalArgs._queryType;
         const newState = state[key as QueryKey];
         if (key && getKeyFromEnumValue(queryTypeEnums, key)) {
-          newState.isLoading = false;
-          newState.errors = action.payload;
+          if (newState?.isLoading) newState.isLoading = false;
+          if (newState?.errors) newState.errors = action.payload;
         } else {
           createDebuggingMessage(
             [debugMessages.INVALID_KEY, Object.keys(initialState).join(', ')],
@@ -314,10 +319,30 @@ export const sliceCreator = <
         const newState = state[key as QueryKey];
 
         if (key && getKeyFromEnumValue(queryTypeEnums, key)) {
-          if (action.payload.results || action.payload.results.length) {
-            bundleCase(newState, action.payload);
+          if (action?.payload?.results || action?.payload?.results?.length) {
+            if (Array.isArray(newState.results) && newState?.results?.length) {
+              /**
+               * Right here we are smartly checking if the results are unique or not.
+               * If they are not unique, we don't add them to the state.
+               * This is useful for when you are using the `useInfiniteQuery` hook
+               */
+              const itemIsUnique =
+                isUnique([
+                  ...newState.results,
+                  ...(action?.payload?.results ?? []),
+                ]) &&
+                isUnique([...newState.results]) &&
+                !newState.hasMore;
 
-            if (action?.payload?.page) newState.page = action?.payload?.page;
+              if (itemIsUnique) {
+                newState.results = getUnique([
+                  ...newState.results,
+                  ...(action?.payload?.results ?? []),
+                ]);
+              }
+            } else if (!newState?.results?.length || newState.page === 1) {
+              newState.results = action?.payload?.results;
+            }
           }
 
           newState.isLoading = false;
@@ -344,8 +369,10 @@ export const sliceCreator = <
       setPageData(
         state,
         action: PayloadAction<{
-          _queryType: keyof typeof getInitialStateSlice;
-          data: SliceState<T>;
+          _queryType?: keyof typeof getInitialStateSlice;
+          data: SliceState<T> & {
+            _queryType?: keyof typeof getInitialStateSlice;
+          };
         }>
       ) {
         if (ignoreDefaultReducers) {
@@ -356,29 +383,38 @@ export const sliceCreator = <
           return;
         } else {
           const { _queryType: type, data } = action.payload;
-          const newState = state[type as QueryKey];
+          const consolidateQueryType = type || data._queryType;
+
+          if (!consolidateQueryType) {
+            createDebuggingMessage(
+              [debugMessages.INVALID_KEY, Object.keys(initialState).join(', ')],
+              'error'
+            );
+          }
+
+          const newState = state[consolidateQueryType as QueryKey];
+          if (data.errors) newState.errors = data.errors;
+          if (data.page) newState.page = data.page;
 
           bundleCase(newState, data);
 
-          newState.isLoading = data.isLoading;
-
-          if (data.errors) newState.errors = data.errors;
-          if (data.page) newState.page = data.page;
+          newState.isLoading = data?.isLoading || false;
         }
       },
     },
     extraReducers: (builder) => {
-      builder.addCase(HYDRATE, (state: ReturnType<any>, action: any) => {
-        return {
-          ...state,
-          ...action.payload[name],
-        };
-      });
+      shouldUseHydrate &&
+        builder.addCase(HYDRATE, (state: RootState, action: any) => {
+          return {
+            ...state,
+            ...action.payload[name],
+          };
+        });
 
-      extraReducers && extraReducers(builder);
+      extraReducers?.(builder);
 
       if (!ignoreDefaultReducers) {
-        if (!!all) {
+        if (all.length) {
           constructPendingCases(builder, all);
           constructSuccessCases(builder, all);
           constructFailedCases(builder, all);
