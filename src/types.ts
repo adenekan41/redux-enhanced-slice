@@ -1,11 +1,12 @@
 import type { ActionCreatorWithOptionalPayload } from '@reduxjs/toolkit';
+import { Matcher } from '@reduxjs/toolkit/dist/tsHelpers';
 
 export interface SliceState<T> {
   results: T;
   isLoading?: boolean;
   page?: number;
   hasMore?: boolean;
-  errors?: any;
+  errors?: unknown;
 }
 export type NoInfer<T> = [T][T extends any ? 0 : never];
 export type ObjectKeys<T extends unknown> = keyof T;
@@ -38,10 +39,16 @@ export type SliceEnum<K, S extends string> = Readonly<{
  */
 export type SliceConsolidateReducers<Z extends unknown, S extends string> = {
   [U in keyof Z]: ActionCreatorWithOptionalPayload<
-    Parameters<Z[U] extends (...args: any) => any ? Z[U] : never>[1]['payload'],
+    Parameters<
+      Z[U] extends (...args: any) => unknown ? Z[U] : never
+    >[1]['payload'],
     `${S}/${U & string}`
   >;
 };
 
 export type RootState = ReturnType<any>;
-export type ApiEndpointQuery<T, S> = any[];
+export type ConstructSliceCases = {
+  matchPending: Matcher<unknown>;
+  matchFulfilled: Matcher<unknown>;
+  matchRejected: Matcher<unknown>;
+};

@@ -6,7 +6,11 @@ import {
   isAnyOf,
 } from '@reduxjs/toolkit';
 import { getUnique, isUnique, sliceSelectorString, sliceString } from './utils';
-
+import {
+  BaseQueryFn,
+  EndpointDefinitions,
+  QueryDefinition,
+} from '@reduxjs/toolkit/dist/query';
 import type { ActionReducerMapBuilder } from '@reduxjs/toolkit';
 import type {
   SliceEnum,
@@ -18,8 +22,9 @@ import type {
   RootState,
   NoInfer,
   IgnoreDefaultReducers,
-  ApiEndpointQuery,
+  ConstructSliceCases,
 } from './types';
+import { ApiEndpointQuery } from '@reduxjs/toolkit/dist/query/core/module';
 
 /**
  * Retrieves the key of an enum object based on its value.
@@ -74,9 +79,9 @@ const createEnumObject = <T, K, S extends string>(
  * properties: `results`, `isLoading`, `hasMore`, `page`, and `errors`.
  */
 const createInitialStateSlice = <
-  T extends Z extends true ? any : unknown,
+  T extends Z extends true ? never : unknown,
   S extends string,
-  Z extends boolean
+  Z extends boolean | Array<keyof T>
 >(
   state: T,
   name: S,
@@ -132,7 +137,7 @@ const createInitialStateSlice = <
  */
 export const sliceCreator = <
   S extends string,
-  T extends Z['ignoreDefaultReducers'] extends true ? any : unknown,
+  T extends Z['ignoreDefaultReducers'] extends true | keyof T ? any : unknown,
   Y extends {
     reducers?: ValidateSliceCaseReducers<
       InitialStateSlice<T, S, Z>,
@@ -144,16 +149,28 @@ export const sliceCreator = <
       >
     ) => void;
     cases?: {
-      pending?: ApiEndpointQuery<any, any>[];
-      fulfilled?: ApiEndpointQuery<any, any>[];
-      rejected?: ApiEndpointQuery<any, any>[];
-      all?: ApiEndpointQuery<any, any>[];
+      pending?: ApiEndpointQuery<
+        QueryDefinition<unknown, BaseQueryFn, string, unknown>,
+        EndpointDefinitions
+      >[];
+      fulfilled?: ApiEndpointQuery<
+        QueryDefinition<unknown, BaseQueryFn, string, unknown>,
+        EndpointDefinitions
+      >[];
+      rejected?: ApiEndpointQuery<
+        QueryDefinition<unknown, BaseQueryFn, string, unknown>,
+        EndpointDefinitions
+      >[];
+      all?: ApiEndpointQuery<
+        QueryDefinition<unknown, BaseQueryFn, string, unknown>,
+        EndpointDefinitions
+      >[];
     };
   },
   Z extends {
     debug?: boolean;
     HYDRATE?: string;
-    ignoreDefaultReducers?: boolean;
+    ignoreDefaultReducers?: Array<keyof T> | boolean;
     shouldUseHydrate?: boolean;
   }
 >(
@@ -195,7 +212,7 @@ export const sliceCreator = <
   >;
   type ComposeSelectorsReturnType = {
     [K in ObjectKeys<typeof queryTypeEnums> as SliceSelector<K, S>]: (
-      state: ReturnType<any>
+      state: RootState
     ) => IgnoreDefaultReducers<SliceState<T[K]>, T[K], Z>;
   };
 
@@ -273,9 +290,9 @@ export const sliceCreator = <
     return Object.freeze(composedSelectors) as ComposeSelectorsReturnType;
   };
 
-  const constructPendingCases = (builder: ActionBuilder, cases: any) => {
+  const constructPendingCases = (builder: ActionBuilder, cases: unknown[]) => {
     return builder.addMatcher(
-      isAnyOf(...cases.map((c: any) => c.matchPending)),
+      isAnyOf(...cases.map((c: ConstructSliceCases) => c.matchPending)),
       (state, action) => {
         const key = action.meta.arg.originalArgs._queryType;
         const newState = state[key as QueryKey];
@@ -292,9 +309,9 @@ export const sliceCreator = <
     );
   };
 
-  const constructFailedCases = (builder: ActionBuilder, cases: any) => {
+  const constructFailedCases = (builder: ActionBuilder, cases: unknown[]) => {
     return builder.addMatcher(
-      isAnyOf(...cases.map((c: any) => c.matchRejected)),
+      isAnyOf(...cases.map((c: ConstructSliceCases) => c.matchRejected)),
       (state, action) => {
         const key = action.meta.arg.originalArgs._queryType;
         const newState = state[key as QueryKey];
@@ -311,9 +328,9 @@ export const sliceCreator = <
     );
   };
 
-  const constructSuccessCases = (builder: ActionBuilder, cases: any) => {
+  const constructSuccessCases = (builder: ActionBuilder, cases: unknown[]) => {
     return builder.addMatcher(
-      isAnyOf(...cases.map((c: any) => c.matchFulfilled)),
+      isAnyOf(...cases.map((c: ConstructSliceCases) => c.matchFulfilled)),
       (state, action) => {
         const key = action.meta.arg.originalArgs._queryType;
         const newState = state[key as QueryKey];
@@ -404,10 +421,14 @@ export const sliceCreator = <
     },
     extraReducers: (builder) => {
       shouldUseHydrate &&
-        builder.addCase(HYDRATE, (state: RootState, action: any) => {
+        builder.addCase(HYDRATE, (state: RootState, action: unknown) => {
           return {
             ...state,
-            ...action.payload[name],
+            ...(
+              action as {
+                payload: RootState;
+              }
+            ).payload[name],
           };
         });
 
