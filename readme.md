@@ -170,6 +170,7 @@ The `createEnhancedSlice` function creates a Redux slice with the given name and
   - `HYDRATE` (boolean): Whether to include a `HYDRATE` action in the slice. Defaults to `''`.
   - `debug` (boolean): Whether to enable debug mode. Defaults to `false`.
   - `ignoreDefaultReducers` (boolean): Whether to ignore the default reducers. Defaults to `false`.
+  - `shouldUseHydrate` (boolean): By default builders use HYDRATE and to over rule this behaviour you can disable it. Defaults to `true`.
 
 #### Returns
 

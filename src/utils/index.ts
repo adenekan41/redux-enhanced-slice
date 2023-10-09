@@ -34,12 +34,33 @@ export function generateStaticID(
 }
 
 /**
+ * converts a string to camel case and optionally capitalizes the first letter.
+ * @param str - The input string that needs to be converted to camelCase.
+ * @param [capitalize=true] - The `capitalize` parameter is a boolean value that determines whether the
+ * first letter of the resulting string should be capitalized or not. If `capitalize` is `true`, the
+ * first letter will be capitalized, otherwise it will be in lowercase.
+ * @returns The `camelize` function returns a camelCase version of the input string `str`. If the
+ * `capitalize` parameter is set to `true` (which is the default), the first letter of the resulting
+ * string will be capitalized. If `capitalize` is set to `false`, the first letter of the resulting
+ * string will be in lowercase.
+ */
+export const camelize = (str, capitalize = true) => {
+  return str
+    .replace(/(?:^\w|[A-Z]|\b\w)/g, function (word, index) {
+      return !capitalize && index === 0
+        ? word.toLowerCase()
+        : word.toUpperCase();
+    })
+    .replace(/\s+/g, '');
+};
+
+/**
  * Capitalizes the first letter of the input string.
- * @param {T} string - Input string of type `T` that extends the `string` type.
+ * @param {T} string - Input string of type `T` that extends the `string` ty pe.
  * @returns Capitalized version of the input string using TypeScript's `Capitalize` utility type.
  */
 export const capitalize = <T extends string>(string: T): Capitalize<T> => {
-  return _.capitalize(string) as Capitalize<T>;
+  return camelize(string) as Capitalize<T>;
 };
 
 /**
@@ -63,7 +84,79 @@ export const sliceString = <T extends string, S extends string>(
 ): SliceString<S, T> =>
   `${string}${capitalize(appendStringWithStaticID(append))}`;
 
+/**
+ * Generates a selector string based on a given name and key.
+ * @param name - The name of a slice in a Redux store.
+ * @param key - A string used to create a selector name.
+ * @returns A string in the format of select followed by the capitalized and concatenated name and key with all spaces removed.
+ */
 export const sliceSelectorString = (name: string, key: string) => {
   const _case = `${name} ${key}`;
   return `select${_.startCase(_case).replaceAll(' ', '')}`;
+};
+
+/**
+ * The function takes an array of objects, removes any duplicates based on their stringified
+ * representation, and returns a new array with only the unique objects.
+ * @param arr - an array of objects that you want to remove duplicates from. The function uses the
+ * properties of each object to determine uniqueness.
+ * @returns The function `getUnique` returns an array of unique objects from the input array `arr`. The
+ * uniqueness is determined by comparing the stringified version of each object in the array. If two
+ * objects have the same stringified version, only one of them is included in the output array.
+ */
+export const getUnique = <T extends Record<string, any>>(
+  arr: Array<T>,
+  byProp?: string | string[]
+): Array<T> => {
+  const uniqueSet = new Set();
+  const result: Array<T> = [];
+
+  const getPropertyValues = (obj: T, props: string | string[]): string => {
+    if (Array.isArray(props)) {
+      return props.map((prop) => String(obj[prop])).join('|');
+    }
+    return String(obj[props]);
+  };
+
+  for (const obj of arr) {
+    if (!obj) continue; // Skip falsy values
+
+    const propValues = byProp
+      ? getPropertyValues(obj, byProp)
+      : JSON.stringify(obj);
+    if (!uniqueSet.has(propValues)) {
+      uniqueSet.add(propValues);
+      result.push(obj);
+    }
+  }
+
+  return result;
+};
+/**
+ * This function checks if an array of objects is unique by converting each object to a string and
+ * using a Set to keep track of duplicates.
+ * @param arr - an array of objects that we want to check for uniqueness.
+ * @returns The function `isUnique` returns a boolean value (`true` or `false`). It returns `true` if
+ * all objects in the input array are unique (i.e., there are no duplicates), and `false` if there is
+ * at least one duplicate object in the array.
+ */
+export const isUnique = <T extends unknown>(
+  arr: Array<T>,
+  options?: {
+    isUnique?: (obj: Array<T>) => boolean;
+  }
+): boolean => {
+  const uniqueSet = new Set();
+
+  for (const obj of arr) {
+    if (!obj) continue; // Skip falsy values
+    const objString = JSON.stringify(obj);
+    if (uniqueSet.has(objString)) {
+      return false; // If the set already has this stringified object, the array is not unique
+    }
+    uniqueSet.add(objString);
+  }
+
+  if (options?.isUnique) return options.isUnique(arr);
+  return true; // If we've checked all objects and found no duplicates, the array is unique
 };
